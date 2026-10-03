@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Minimal Text-to-Speech",
+  "version": "1.0",
+  "description": "Select text on any page to listen to it with minimal playback controls.",
+  "permissions": [
+    "activeTab"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "css": ["styles.css"],
+      "js": ["content.js"]
+    }
+  ]
+}
