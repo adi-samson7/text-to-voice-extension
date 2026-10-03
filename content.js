@@ -2,6 +2,7 @@ let container = null;
 let selectedText = "";
 let utterance = null;
 let playBtn, pauseBtn, stopBtn;
+let isPaused = false; 
 
 document.addEventListener('mouseup', (e) => {
     if (container && container.contains(e.target)) return;
@@ -26,6 +27,7 @@ document.addEventListener('mousedown', (e) => {
 
 function showPlayButton(selection) {
     removeUI(); 
+    isPaused = false; 
     
     container = document.createElement('div');
     container.id = 'minimal-tts-ext-container';
@@ -46,12 +48,14 @@ function showPlayButton(selection) {
     pauseBtn.className = 'tts-btn tts-ctrl';
     pauseBtn.style.display = 'none'; 
     pauseBtn.onclick = () => {
-        if (speechSynthesis.paused) {
+        if (isPaused) {
             speechSynthesis.resume();
+            isPaused = false;
             pauseBtn.innerHTML = '⏸';
             playBtn.innerHTML = '🔊 Reading...'; 
         } else {
             speechSynthesis.pause();
+            isPaused = true;
             pauseBtn.innerHTML = '▶';
             playBtn.innerHTML = '🔊 Paused...'; 
         }
@@ -76,30 +80,49 @@ function startReading() {
     if (!selectedText) return;
     
     speechSynthesis.cancel();
-    utterance = new SpeechSynthesisUtterance(selectedText);
+    isPaused = false; 
     
-    // Check storage for a custom voice before speaking
     chrome.storage.sync.get(['selectedVoice'], (result) => {
-        if (result.selectedVoice) {
-            const voices = speechSynthesis.getVoices();
-            const chosenVoice = voices.find(v => v.name === result.selectedVoice);
+        const voices = speechSynthesis.getVoices();
+        const chosenVoice = result.selectedVoice ? voices.find(v => v.name === result.selectedVoice) : null;
+        
+        chrome.i18n.detectLanguage(selectedText, (langData) => {
+            const detectedLangCode = langData.languages.length > 0 ? langData.languages[0].language : 'und';
+            
+            if (chosenVoice && detectedLangCode !== 'und') {
+                const voiceBaseLang = chosenVoice.lang.split('-')[0]; 
+                const detectedBaseLang = detectedLangCode.split('-')[0];
+
+                if (detectedBaseLang !== voiceBaseLang) {
+                    playBtn.innerHTML = '⚠️ Invalid Language';
+                    playBtn.style.cursor = 'default';
+                    playBtn.onclick = null;
+                    
+                    // Automatically close the UI after 2 seconds
+                    setTimeout(removeUI, 2000);
+                    
+                    return; 
+                }
+            }
+
+            utterance = new SpeechSynthesisUtterance(selectedText);
             if (chosenVoice) {
                 utterance.voice = chosenVoice;
             }
-        }
 
-        pauseBtn.style.display = 'flex';
-        stopBtn.style.display = 'flex';
-        
-        playBtn.innerHTML = '🔊 Reading...';
-        playBtn.style.cursor = 'default';
-        playBtn.onclick = null; 
-        
-        utterance.onend = () => {
-            removeUI();
-        };
-        
-        speechSynthesis.speak(utterance);
+            pauseBtn.style.display = 'flex';
+            stopBtn.style.display = 'flex';
+            
+            playBtn.innerHTML = '🔊 Reading...';
+            playBtn.style.cursor = 'default';
+            playBtn.onclick = null; 
+            
+            utterance.onend = () => {
+                removeUI();
+            };
+            
+            speechSynthesis.speak(utterance);
+        });
     });
 }
 
