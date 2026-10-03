@@ -89,7 +89,11 @@ function startReading() {
         chrome.i18n.detectLanguage(selectedText, (langData) => {
             const detectedLangCode = langData.languages.length > 0 ? langData.languages[0].language : 'und';
             
-            if (chosenVoice && detectedLangCode !== 'und') {
+            // Count the number of selected words
+            const wordCount = selectedText.trim().split(/\s+/).length;
+            
+            // Only enforce language matching if the text is longer than 3 words
+            if (chosenVoice && detectedLangCode !== 'und' && wordCount > 3) {
                 const voiceBaseLang = chosenVoice.lang.split('-')[0]; 
                 const detectedBaseLang = detectedLangCode.split('-')[0];
 
