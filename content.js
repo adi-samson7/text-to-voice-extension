@@ -3,7 +3,6 @@ let selectedText = "";
 let utterance = null;
 let playBtn, pauseBtn, stopBtn;
 
-// Listen for text selection
 document.addEventListener('mouseup', (e) => {
     if (container && container.contains(e.target)) return;
 
@@ -18,7 +17,6 @@ document.addEventListener('mouseup', (e) => {
     }, 10);
 });
 
-// Hide UI and stop audio when clicking elsewhere
 document.addEventListener('mousedown', (e) => {
     if (container && !container.contains(e.target)) {
         removeUI();
@@ -38,13 +36,11 @@ function showPlayButton(selection) {
     container.style.top = `${window.scrollY + rect.bottom + 8}px`;
     container.style.left = `${window.scrollX + rect.left + (rect.width / 2) - 40}px`;
     
-    // 1. Main Read Button
     playBtn = document.createElement('button');
     playBtn.innerHTML = '🔊 Read';
     playBtn.className = 'tts-btn';
     playBtn.onclick = startReading;
     
-    // 2. Pause/Resume Button
     pauseBtn = document.createElement('button');
     pauseBtn.innerHTML = '⏸';
     pauseBtn.className = 'tts-btn tts-ctrl';
@@ -53,15 +49,14 @@ function showPlayButton(selection) {
         if (speechSynthesis.paused) {
             speechSynthesis.resume();
             pauseBtn.innerHTML = '⏸';
-            playBtn.innerHTML = '🔊 Reading...'; // Updates back to reading
+            playBtn.innerHTML = '🔊 Reading...'; 
         } else {
             speechSynthesis.pause();
             pauseBtn.innerHTML = '▶';
-            playBtn.innerHTML = '🔊 Paused...'; // Updates to paused
+            playBtn.innerHTML = '🔊 Paused...'; 
         }
     };
     
-    // 3. Stop Button
     stopBtn = document.createElement('button');
     stopBtn.innerHTML = '⏹';
     stopBtn.className = 'tts-btn tts-ctrl';
@@ -83,18 +78,29 @@ function startReading() {
     speechSynthesis.cancel();
     utterance = new SpeechSynthesisUtterance(selectedText);
     
-    pauseBtn.style.display = 'flex';
-    stopBtn.style.display = 'flex';
-    
-    playBtn.innerHTML = '🔊 Reading...';
-    playBtn.style.cursor = 'default';
-    playBtn.onclick = null; 
-    
-    utterance.onend = () => {
-        removeUI();
-    };
-    
-    speechSynthesis.speak(utterance);
+    // Check storage for a custom voice before speaking
+    chrome.storage.sync.get(['selectedVoice'], (result) => {
+        if (result.selectedVoice) {
+            const voices = speechSynthesis.getVoices();
+            const chosenVoice = voices.find(v => v.name === result.selectedVoice);
+            if (chosenVoice) {
+                utterance.voice = chosenVoice;
+            }
+        }
+
+        pauseBtn.style.display = 'flex';
+        stopBtn.style.display = 'flex';
+        
+        playBtn.innerHTML = '🔊 Reading...';
+        playBtn.style.cursor = 'default';
+        playBtn.onclick = null; 
+        
+        utterance.onend = () => {
+            removeUI();
+        };
+        
+        speechSynthesis.speak(utterance);
+    });
 }
 
 function removeUI() {
