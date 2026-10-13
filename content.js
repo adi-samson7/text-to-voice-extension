@@ -12,8 +12,13 @@ document.addEventListener('mouseup', (e) => {
         const text = selection.toString().trim();
 
         if (text && text.length > 0) {
-            selectedText = text;
-            showPlayButton(selection);
+            // Only show the button if the extension is enabled
+            chrome.storage.sync.get(['isEnabled'], (result) => {
+                if (result.isEnabled !== false) {
+                    selectedText = text;
+                    showPlayButton(selection);
+                }
+            });
         }
     }, 10);
 });
