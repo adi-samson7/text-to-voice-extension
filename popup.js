@@ -1,16 +1,20 @@
 const langSelect = document.getElementById('langSelect');
 const voiceSelect = document.getElementById('voiceSelect');
+const toggleBtn = document.getElementById('toggleBtn');
 let allVoices = [];
 
 function init() {
     allVoices = speechSynthesis.getVoices();
     if (allVoices.length === 0) return;
 
-    // Get unique language codes and sort them
     const languages = [...new Set(allVoices.map(v => v.lang))].sort();
 
-    // Load saved preferences
-    chrome.storage.sync.get(['selectedLang', 'selectedVoice'], (result) => {
+    // Check storage for language, voice, and the enable toggle
+    chrome.storage.sync.get(['selectedLang', 'selectedVoice', 'isEnabled'], (result) => {
+        // Toggle setup (Default to true/ON if it has never been set)
+        const isEnabled = result.isEnabled !== false; 
+        updateToggleUI(isEnabled);
+
         const currentLang = result.selectedLang || (languages.includes('en-US') ? 'en-US' : languages[0]);
         
         langSelect.innerHTML = '';
@@ -35,7 +39,6 @@ function init() {
 
 function updateVoices(lang, savedVoice) {
     voiceSelect.innerHTML = '';
-    
     const filteredVoices = allVoices.filter(v => v.lang === lang);
 
     filteredVoices.forEach(voice => {
@@ -46,22 +49,36 @@ function updateVoices(lang, savedVoice) {
         voiceSelect.appendChild(option);
     });
 
-    // FIX: If the currently saved voice doesn't belong to the newly selected language,
-    // immediately force-save the first voice in the new language list to storage.
     if (filteredVoices.length > 0 && !filteredVoices.some(v => v.name === savedVoice)) {
-        voiceSelect.selectedIndex = 0; // Update the UI to show the first option
-        chrome.storage.sync.set({ selectedVoice: filteredVoices[0].name }); // Save to storage
+        voiceSelect.selectedIndex = 0; 
+        chrome.storage.sync.set({ selectedVoice: filteredVoices[0].name }); 
     }
 }
 
-// When Language changes, save the new language and wipe the old voice preference
+function updateToggleUI(isEnabled) {
+    if (isEnabled) {
+        toggleBtn.textContent = 'ON';
+        toggleBtn.classList.remove('off');
+    } else {
+        toggleBtn.textContent = 'OFF';
+        toggleBtn.classList.add('off');
+    }
+}
+
+toggleBtn.addEventListener('click', () => {
+    chrome.storage.sync.get(['isEnabled'], (result) => {
+        const newState = result.isEnabled === false ? true : false;
+        chrome.storage.sync.set({ isEnabled: newState });
+        updateToggleUI(newState);
+    });
+});
+
 langSelect.addEventListener('change', (e) => {
     const newLang = e.target.value;
     chrome.storage.sync.set({ selectedLang: newLang });
-    updateVoices(newLang, null); // Passing null forces it to pick a fresh voice
+    updateVoices(newLang, null); 
 });
 
-// When Voice changes, update storage
 voiceSelect.addEventListener('change', (e) => {
     chrome.storage.sync.set({ selectedVoice: e.target.value });
 });
