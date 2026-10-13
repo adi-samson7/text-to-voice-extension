@@ -4,6 +4,15 @@ let utterance = null;
 let playBtn, pauseBtn, stopBtn;
 let isPaused = false; 
 
+// --- NEW: Pre-warm voices in the background so they are ready on the first click ---
+let allVoices = window.speechSynthesis.getVoices();
+if (window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = () => {
+        allVoices = window.speechSynthesis.getVoices();
+    };
+}
+// ----------------------------------------------------------------------------------
+
 document.addEventListener('mouseup', (e) => {
     if (container && container.contains(e.target)) return;
 
@@ -12,7 +21,6 @@ document.addEventListener('mouseup', (e) => {
         const text = selection.toString().trim();
 
         if (text && text.length > 0) {
-            // Only show the button if the extension is enabled
             chrome.storage.sync.get(['isEnabled'], (result) => {
                 if (result.isEnabled !== false) {
                     selectedText = text;
@@ -88,16 +96,15 @@ function startReading() {
     isPaused = false; 
     
     chrome.storage.sync.get(['selectedVoice'], (result) => {
-        const voices = speechSynthesis.getVoices();
+        // Use the pre-loaded voices array instead of fetching on the fly
+        const voices = allVoices.length > 0 ? allVoices : speechSynthesis.getVoices();
         const chosenVoice = result.selectedVoice ? voices.find(v => v.name === result.selectedVoice) : null;
         
         chrome.i18n.detectLanguage(selectedText, (langData) => {
             const detectedLangCode = langData.languages.length > 0 ? langData.languages[0].language : 'und';
             
-            // Count the number of selected words
             const wordCount = selectedText.trim().split(/\s+/).length;
             
-            // Only enforce language matching if the text is longer than 3 words
             if (chosenVoice && detectedLangCode !== 'und' && wordCount > 3) {
                 const voiceBaseLang = chosenVoice.lang.split('-')[0]; 
                 const detectedBaseLang = detectedLangCode.split('-')[0];
@@ -107,7 +114,6 @@ function startReading() {
                     playBtn.style.cursor = 'default';
                     playBtn.onclick = null;
                     
-                    // Automatically close the UI after 2 seconds
                     setTimeout(removeUI, 2000);
                     
                     return; 
