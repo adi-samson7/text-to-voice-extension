@@ -1,8 +1,15 @@
 let container = null;
 let selectedText = "";
 let utterance = null;
-let playBtn, pauseBtn, stopBtn;
-let isPaused = false; 
+let playBtn, pauseBtn, stopBtn, speedBtn;
+let isPaused = false;
+const SPEEDS = [1, 1.25, 1.5, 2];
+let speechRate = 1;      // synced with chrome.storage so the right-click menu shares it
+chrome.storage.sync.get(['speechRate'], (r) => {
+    if (SPEEDS.includes(r.speechRate)) speechRate = r.speechRate;
+});
+let charOffset = 0;      // approx. position in selectedText, used to resume on speed change
+let activeVoice = null;
 
 // --- NEW: Pre-warm voices in the background so they are ready on the first click ---
 let allVoices = window.speechSynthesis.getVoices();
@@ -83,9 +90,16 @@ function showPlayButton(selection) {
         removeUI();
     };
     
+    speedBtn = document.createElement('button');
+    speedBtn.innerHTML = `${speechRate}x`;
+    speedBtn.className = 'tts-btn tts-ctrl';
+    speedBtn.style.display = 'none';
+    speedBtn.onclick = toggleSpeed;
+
     container.appendChild(playBtn);
     container.appendChild(pauseBtn);
     container.appendChild(stopBtn);
+    container.appendChild(speedBtn);
     document.body.appendChild(container);
 }
 
@@ -120,25 +134,51 @@ function startReading() {
                 }
             }
 
-            utterance = new SpeechSynthesisUtterance(selectedText);
-            if (chosenVoice) {
-                utterance.voice = chosenVoice;
-            }
+            activeVoice = chosenVoice;
+            charOffset = 0;
 
             pauseBtn.style.display = 'flex';
             stopBtn.style.display = 'flex';
-            
+            speedBtn.style.display = 'flex';
+
             playBtn.innerHTML = '🔊 Reading...';
             playBtn.style.cursor = 'default';
-            playBtn.onclick = null; 
-            
-            utterance.onend = () => {
-                removeUI();
-            };
-            
-            speechSynthesis.speak(utterance);
+            playBtn.onclick = null;
+
+            speakFrom(0);
         });
     });
+}
+
+// Speaks selectedText starting at the given character offset, at the current rate.
+function speakFrom(offset) {
+    const u = new SpeechSynthesisUtterance(selectedText.slice(offset));
+    if (activeVoice) u.voice = activeVoice;
+    u.rate = speechRate;
+
+    u.onboundary = (e) => {
+        if (utterance === u) charOffset = offset + e.charIndex;
+    };
+    // Ignore end events from utterances we replaced (e.g. on speed change)
+    u.onend = () => {
+        if (utterance === u) removeUI();
+    };
+
+    utterance = u;
+    speechSynthesis.speak(u);
+}
+
+function toggleSpeed() {
+    speechRate = SPEEDS[(SPEEDS.indexOf(speechRate) + 1) % SPEEDS.length];
+    speedBtn.innerHTML = `${speechRate}x`;
+    chrome.storage.sync.set({ speechRate });
+
+    // Rate can't change mid-utterance, so restart from the current position
+    isPaused = false;
+    pauseBtn.innerHTML = '⏸';
+    playBtn.innerHTML = '🔊 Reading...';
+    speechSynthesis.cancel();
+    speakFrom(charOffset);
 }
 
 function removeUI() {
