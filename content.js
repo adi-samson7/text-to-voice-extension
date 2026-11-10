@@ -10,6 +10,7 @@ chrome.storage.sync.get(['speechRate'], (r) => {
 });
 let charOffset = 0;      // approx. position in selectedText, used to resume on speed change
 let activeVoice = null;
+let leftTab = false;      // true if this tab was hidden while a reading was active
 
 // --- NEW: Pre-warm voices in the background so they are ready on the first click ---
 let allVoices = window.speechSynthesis.getVoices();
@@ -69,7 +70,15 @@ function showPlayButton(selection) {
     pauseBtn.style.display = 'none'; 
     pauseBtn.onclick = () => {
         if (isPaused) {
-            speechSynthesis.resume();
+            if (leftTab || !speechSynthesis.speaking) {
+                // Another tab used the shared speech engine meanwhile, so our
+                // utterance is gone: start again from the last spoken word.
+                leftTab = false;
+                speechSynthesis.cancel();
+                speakFrom(charOffset);
+            } else {
+                speechSynthesis.resume();
+            }
             isPaused = false;
             pauseBtn.innerHTML = '⏸';
             playBtn.innerHTML = '🔊 Reading...'; 
@@ -105,7 +114,8 @@ function showPlayButton(selection) {
 
 function startReading() {
     if (!selectedText) return;
-    
+    leftTab = false;
+
     speechSynthesis.cancel();
     isPaused = false; 
     
@@ -156,16 +166,55 @@ function speakFrom(offset) {
     if (activeVoice) u.voice = activeVoice;
     u.rate = speechRate;
 
+    let gotBoundary = false;
+
     u.onboundary = (e) => {
-        if (utterance === u) charOffset = offset + e.charIndex;
+        if (utterance !== u) return;
+        gotBoundary = true;
+        charOffset = offset + e.charIndex;
     };
     // Ignore end events from utterances we replaced (e.g. on speed change)
     u.onend = () => {
         if (utterance === u) removeUI();
     };
+    // Some voices never fire word boundary events. If none arrive shortly after
+    // speech starts, estimate the position from time.
+    u.onstart = () => {
+        if (utterance !== u) return;
+        setTimeout(() => {
+            if (utterance === u && !gotBoundary) startEstimator(u, offset, () => gotBoundary);
+        }, 700);
+    };
 
+    clearEstimator();
     utterance = u;
     speechSynthesis.speak(u);
+}
+
+// Position tracking for voices without word events (e.g. Google network voices).
+// Not shown to the user; it only decides where to restart from when changing speed or
+// resuming after another tab took over the speech engine. Rough: ~20 chars/second at 1x.
+const ESTIMATED_CPS = 20;
+
+let estimatorTimer = null;
+function startEstimator(u, offset, hasBoundary) {
+    clearEstimator();
+    let elapsedMs = 700; // we waited this long before starting
+    estimatorTimer = setInterval(() => {
+        if (utterance !== u || hasBoundary()) return clearEstimator();
+        if (isPaused || !speechSynthesis.speaking) return;
+        elapsedMs += 100;
+        let idx = offset + Math.floor((elapsedMs / 1000) * ESTIMATED_CPS * speechRate);
+        idx = Math.min(idx, selectedText.length - 1);
+        while (idx > 0 && !/\s/.test(selectedText[idx - 1])) idx--; // snap to word start
+        charOffset = idx;
+    }, 100);
+}
+function clearEstimator() {
+    if (estimatorTimer) {
+        clearInterval(estimatorTimer);
+        estimatorTimer = null;
+    }
 }
 
 function toggleSpeed() {
@@ -181,7 +230,14 @@ function toggleSpeed() {
     speakFrom(charOffset);
 }
 
+// The speech engine is shared by all tabs. If the user leaves this tab while it is
+// reading/paused, another tab may cancel or replace our utterance.
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden && container) leftTab = true;
+});
+
 function removeUI() {
+    clearEstimator();
     if (container) {
         container.remove();
         container = null;
