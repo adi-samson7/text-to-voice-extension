@@ -96,4 +96,4 @@ Issues and pull requests are welcome. There is no build step: edit the files, re
 
 ## License
 
-No license has been specified yet. Add a `LICENSE` file to define how others may use this code.
+Released under the [MIT License](LICENSE).
